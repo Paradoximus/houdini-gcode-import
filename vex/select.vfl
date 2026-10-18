@@ -1,0 +1,6 @@
+// gcode::import — drop travel moves and start/end G-code unless asked for.
+// Runs over Primitives.
+
+if ((!chi("../travel") && inprimgroup(0, "travel", @primnum)) ||
+    (!chi("../custom") && inprimgroup(0, "custom", @primnum)))
+    removeprim(0, @primnum, 1);

@@ -1,0 +1,42 @@
+// gcode::import — Cd per run: the filament's colour or the slicer preview's feature colour.
+// Runs over Primitives. Colours are sRGB in the slicers, Cd is linear.
+
+function vector linear(vector c)
+{
+    vector out;
+    for (int i = 0; i < 3; i++)
+        out[i] = c[i] <= 0.04045 ? c[i] / 12.92 : pow((c[i] + 0.055) / 1.055, 2.4);
+    return out;
+}
+
+// PrusaSlicer / Bambu Studio preview palette, matched by words of the feature name
+// so that Bambu, Orca, Prusa, Cura and Simplify3D names all land somewhere sensible.
+function vector feature_colour(string name)
+{
+    string f = tolower(name);
+    if (find(f, "overhang") >= 0)                             return {0.12, 0.12, 1.00};
+    if (find(f, "outer") >= 0 || find(f, "external") >= 0)    return {1.00, 0.49, 0.22};
+    if (find(f, "bridge") >= 0)                               return {0.30, 0.50, 0.73};
+    if (find(f, "top") >= 0)                                  return {0.94, 0.25, 0.25};
+    if (find(f, "bottom") >= 0)                               return {0.40, 0.36, 0.78};
+    if (find(f, "ironing") >= 0)                              return {1.00, 0.55, 0.41};
+    if (find(f, "gap") >= 0)                                  return {1.00, 1.00, 1.00};
+    if (find(f, "interface") >= 0)                            return {0.00, 0.50, 0.00};
+    if (find(f, "support") >= 0)                              return {0.00, 1.00, 0.00};
+    if (find(f, "skirt") >= 0 || find(f, "brim") >= 0)        return {0.00, 0.53, 0.43};
+    if (find(f, "tower") >= 0 || find(f, "prime") >= 0)       return {0.70, 0.89, 0.67};
+    if (find(f, "solid") >= 0 || f == "skin")                 return {0.59, 0.33, 0.80};
+    if (find(f, "fill") >= 0)                                 return {0.69, 0.19, 0.16};
+    if (find(f, "wall") >= 0 || find(f, "perimeter") >= 0 || find(f, "shell") >= 0)
+                                                              return {1.00, 0.90, 0.30};
+    return {0.37, 0.82, 0.58};                                // Custom and the rest
+}
+
+if (inprimgroup(0, "travel", @primnum))
+    v@Cd = linear(s@feature == "Wipe" ? {1.0, 1.0, 0.0} : {0.22, 0.28, 0.61});
+else if (chi("../colour") == 1)
+    v@Cd = linear(feature_colour(s@feature));
+else {
+    vector filament[] = detail(0, "filament_colour");   // made linear by the reader
+    v@Cd = len(filament) ? filament[clamp(i@tool, 0, len(filament) - 1)] : {0.32, 0.32, 0.32};
+}

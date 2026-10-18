@@ -1,0 +1,63 @@
+// gcode::import — prepares extrusion runs for the sweep.
+// Runs over Primitives; replaces each curve by one or more curves on the same points.
+// Points closer than a tenth of the bead width to the previous one are dropped: their
+// direction is coordinate rounding. A run is cut where one ring cannot turn the
+// corner: sharper than 60 degrees, or so tight for its short edges that the inner side
+// of the bead would fold. Every piece gets round ends, so at a cut the two pieces
+// overlap the way the nozzle's round footprint does.
+
+vector up = chi("../yup") ? {0, 1, 0} : {0, 0, 1};
+float sharp = cos(radians(60.0));
+
+int pts[] = primpoints(0, @primnum);
+int n = len(pts);
+
+int keep[] = array(pts[0]);
+for (int i = 1; i < n - 1; i++) {
+    vector a = point(0, "P", keep[-1]), b = point(0, "P", pts[i]);
+    float w = point(0, "width", pts[i]);
+    if (distance(a, b) >= 0.1 * w)
+        append(keep, pts[i]);
+}
+if (n > 1) {
+    vector a = point(0, "P", keep[-1]), b = point(0, "P", pts[-1]);
+    float w = point(0, "width", pts[-1]);
+    if (len(keep) > 1 && distance(a, b) < 0.1 * w)
+        pop(keep);                                  // the end stays, its neighbour goes
+    append(keep, pts[-1]);
+}
+
+int m = len(keep);
+int cuts[] = array(0);
+for (int i = 1; i < m - 1; i++) {
+    vector a = point(0, "P", keep[i - 1]), b = point(0, "P", keep[i]), c = point(0, "P", keep[i + 1]);
+    vector d0 = b - a, d1 = c - b;
+    d0 -= up * dot(d0, up);                         // the bead turns in plan
+    d1 -= up * dot(d1, up);
+    float l0 = length(d0), l1 = length(d1);
+    if (l0 < 1e-9 || l1 < 1e-9)
+        continue;
+    float cosine = dot(d0, d1) / (l0 * l1);
+    float w = point(0, "width", keep[i]);
+    // A mitred ring's inner side reaches half_width * tan(turn / 2) along each edge;
+    // up to half an edge leaves room for the corner at the edge's other end.
+    float reach = 0.5 * w * sqrt(max(1.0 - cosine, 0.0) / max(1.0 + cosine, 1e-9));
+    if (cosine < sharp || reach > 0.5 * min(l0, l1))
+        append(cuts, i);
+}
+append(cuts, m - 1);
+
+string feature = s@feature, object = s@object;
+int layer = i@layer, tool = i@tool;
+vector cd = v@Cd;
+int custom = inprimgroup(0, "custom", @primnum);
+for (int k = 0; k < len(cuts) - 1; k++) {
+    int prim = addprim(0, "polyline", keep[cuts[k]:cuts[k + 1] + 1]);
+    setprimattrib(0, "feature", prim, feature);
+    setprimattrib(0, "object", prim, object);
+    setprimattrib(0, "layer", prim, layer);
+    setprimattrib(0, "tool", prim, tool);
+    setprimattrib(0, "Cd", prim, cd);
+    setprimgroup(0, "custom", prim, custom);
+}
+removeprim(0, @primnum, 0);

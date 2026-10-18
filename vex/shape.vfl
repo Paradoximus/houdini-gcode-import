@@ -1,0 +1,60 @@
+// gcode::import — exact bead section on top of Sweep's topology.
+// Runs over Points of the sweep; input 1 holds the curves it swept. Sweep only supplies
+// the mesh and copies the attributes; every position is set here. The section is the
+// slicers' model of a bead: a rectangle with round ends, its top at the nozzle tip, as
+// wide as the bead and as tall as the layer. Gentle corners are mitred (the sharp ones
+// were cut by "split"). Each end is the section turned half way around the vertical
+// axis through the end point, which in plan is the nozzle's round footprint.
+
+int caps = chi("../sweep/capdivs");         // rows per end cap, the last one is the pole
+int curve = i@curvenum;
+int n = primvertexcount(1, curve);
+int row = i@ptrow;
+int r = clamp(row - caps, 0, n - 1);        // the curve point this row belongs to
+int cap = row < caps ? caps - row : max(row - (caps + n - 1), 0);   // 0 = on the bead
+float dir = row < caps ? -1.0 : 1.0;         // the start cap faces backwards
+vector up = chi("../yup") ? {0, 1, 0} : {0, 0, 1};
+
+vector p = point(1, "P", primpoint(1, curve, r));
+vector d0 = r > 0 ? p - vector(point(1, "P", primpoint(1, curve, r - 1))) : {0, 0, 0};
+vector d1 = r < n - 1 ? vector(point(1, "P", primpoint(1, curve, r + 1))) - p : {0, 0, 0};
+if (length2(d0) == 0) d0 = d1;              // ends, and repeated points
+if (length2(d1) == 0) d1 = d0;
+d0 = normalize(d0);
+d1 = normalize(d1);
+vector t = d0 + d1;
+t = length2(t) > 1e-12 ? normalize(t) : d1;
+
+vector side = cross(t, up);
+if (length2(side) < 1e-12)                      // a vertical move
+    side = cross({1, 1, 1}, up);
+side = normalize(side);
+vector ahead = normalize(cross(up, side)) * dir;   // level, out of the bead's end
+vector edge_side = cross(d1, up);
+float mitre = length2(edge_side) > 1e-12 ? 1.0 / max(dot(side, normalize(edge_side)), 0.5) : 1.0;
+
+float w = f@width, h = f@height;
+float rad = 0.5 * min(w, h);
+float flat = max(0.5 * w - rad, 0.0);
+
+if (cap == caps) {
+    v@P = p + ahead * (flat + rad) - up * (0.5 * h);
+    v@N = ahead;
+} else {
+    // Columns 0..D go up the right end, D+1..2D+1 down the left one.
+    int D = chi("../divisions");
+    int j = i@ptcol;
+    int right = j <= D;
+    float th = radians(right ? -90.0 + 180.0 * j / D : 90.0 + 180.0 * (j - D - 1) / D);
+    float x = (right ? flat : -flat) + rad * cos(th);
+    float y = rad * sin(th) - 0.5 * h;
+    if (cap == 0) {
+        v@P = p + side * (x * mitre) + up * y;
+        v@N = normalize(side * cos(th) + up * sin(th));
+    } else {
+        float phi = radians(90.0 * cap / caps);
+        v@P = p + side * (x * cos(phi)) + ahead * (abs(x) * sin(phi)) + up * y;
+        v@N = normalize(side * (cos(th) * cos(phi)) + ahead * (abs(cos(th)) * sin(phi))
+                        + up * sin(th));
+    }
+}

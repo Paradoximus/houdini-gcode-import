@@ -1,0 +1,33 @@
+// gcode::import — Progress: keep what the nozzle has drawn by that moment.
+// Runs over Primitives. Points carry the print time; the run being drawn is cut
+// exactly at the nozzle, so the bead grows smoothly instead of segment by segment.
+
+float progress = chf("../progress");
+if (progress >= 1)
+    return;
+float now = progress * detail(0, "print_time");
+
+int n = primvertexcount(0, @primnum);
+if (point(0, "time", primpoint(0, @primnum, 0)) >= now) {
+    removeprim(0, @primnum, 1);
+    return;
+}
+if (point(0, "time", primpoint(0, @primnum, n - 1)) <= now)
+    return;
+
+// Last point drawn (lo) and the one the nozzle is heading to (hi).
+int lo = 0, hi = n - 1;
+while (hi - lo > 1) {
+    int mid = (lo + hi) / 2;
+    if (point(0, "time", primpoint(0, @primnum, mid)) <= now)
+        lo = mid;
+    else
+        hi = mid;
+}
+int a = primpoint(0, @primnum, lo), b = primpoint(0, @primnum, hi);
+float ta = point(0, "time", a), tb = point(0, "time", b);
+vector pa = point(0, "P", a), pb = point(0, "P", b);
+setpointattrib(0, "P", b, lerp(pa, pb, (now - ta) / (tb - ta)));
+setpointattrib(0, "time", b, now);
+for (int i = hi + 1; i < n; i++)
+    removepoint(0, primpoint(0, @primnum, i));

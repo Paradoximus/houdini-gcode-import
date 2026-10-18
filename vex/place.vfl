@@ -1,0 +1,18 @@
+// gcode::import — from G-code space (mm, Z up, bed corner at the origin) to the scene.
+// Runs over Points. Width and height are lengths, so they scale with the positions.
+
+int origin = chi("../origin");
+vector o = 0;
+if (origin == 1)
+    o = detail(0, "bed_centre");
+else if (origin == 2)
+    o = detail(0, "print_centre");
+
+vector p = v@P - o;
+if (chi("../yup"))
+    p = set(p.x, p.z, -p.y);   // the same as rotating -90 degrees around X
+
+float s = chf("../scale");
+v@P = p * s;
+f@width *= s;
+f@height *= s;

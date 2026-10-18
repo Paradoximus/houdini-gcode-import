@@ -1,0 +1,51 @@
+// gcode::import — where the nozzle is at Progress: one point, travel moves included.
+// Runs over Detail on an empty input; the whole toolpath comes in on input 1.
+
+int runs = nprimitives(1);
+if (runs == 0)
+    return;
+float now = chf("../progress") * detail(1, "print_time");
+
+// Runs are in print order: take the last one that has started by now.
+int lo = 0, hi = runs - 1;
+while (lo < hi) {
+    int mid = (lo + hi + 1) / 2;
+    if (point(1, "time", primpoint(1, mid, 0)) <= now)
+        lo = mid;
+    else
+        hi = mid - 1;
+}
+int run = lo;
+int n = primvertexcount(1, run);
+
+// Inside the run: the last point passed (a) and the next one (b).
+int a = 0, b = n - 1;
+if (point(1, "time", primpoint(1, run, b)) <= now)
+    a = b;
+else {
+    while (b - a > 1) {
+        int mid = (a + b) / 2;
+        if (point(1, "time", primpoint(1, run, mid)) <= now)
+            a = mid;
+        else
+            b = mid;
+    }
+}
+int pa = primpoint(1, run, a), pb = primpoint(1, run, b);
+float ta = point(1, "time", pa), tb = point(1, "time", pb);
+float f = tb > ta ? clamp((now - ta) / (tb - ta), 0.0, 1.0) : 1.0;
+
+vector pos_a = point(1, "P", pa), pos_b = point(1, "P", pb);
+float speed = point(1, "speed", pb);
+string feature = prim(1, "feature", run);
+int layer = prim(1, "layer", run);
+vector cd = prim(1, "Cd", run);
+int travel = inprimgroup(1, "travel", run);
+
+int pt = addpoint(0, lerp(pos_a, pos_b, f));
+setpointattrib(0, "time", pt, now);
+setpointattrib(0, "extruding", pt, !travel && a != b);
+setpointattrib(0, "speed", pt, speed);
+setpointattrib(0, "feature", pt, feature);
+setpointattrib(0, "layer", pt, layer);
+setpointattrib(0, "Cd", pt, cd);
